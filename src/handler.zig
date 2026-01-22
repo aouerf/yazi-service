@@ -1,9 +1,11 @@
 const std = @import("std");
+
 const c = @import("c.zig").c;
+const spawner = @import("spawner.zig");
 
 const log = std.log.scoped(.handler);
 
-pub const NAME = "org.freedesktop.FileManager1";
+pub const INTERFACE_NAME = "org.freedesktop.FileManager1";
 const OBJECT_PATH = "/org/freedesktop/FileManager1";
 
 // Zig sees sd_bus_vtable as an opaque type, and arrays of opaque types aren't allowed.
@@ -16,7 +18,7 @@ pub fn init(allocator: *const std.mem.Allocator, bus: ?*c.sd_bus) !void {
         bus,
         null,
         OBJECT_PATH,
-        NAME,
+        INTERFACE_NAME,
         get_vtable(),
         @constCast(allocator),
     );
@@ -25,7 +27,7 @@ pub fn init(allocator: *const std.mem.Allocator, bus: ?*c.sd_bus) !void {
         return error.Dbus;
     }
 
-    r = c.sd_bus_request_name(bus, NAME, 0);
+    r = c.sd_bus_request_name(bus, INTERFACE_NAME, 0);
     if (r < 0) {
         log.err("sd_bus_request_name failed: {s}", .{c.strerror(-r)});
         return error.Dbus;
@@ -33,10 +35,10 @@ pub fn init(allocator: *const std.mem.Allocator, bus: ?*c.sd_bus) !void {
 }
 
 pub fn deinit(bus: ?*c.sd_bus) void {
-    _ = c.sd_bus_release_name(bus, NAME);
+    _ = c.sd_bus_release_name(bus, INTERFACE_NAME);
 }
 
-pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) c_int {
+pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) !void {
     const method = blk: {
         const method = std.mem.span(c.sd_bus_message_get_member(message));
         break :blk std.meta.stringToEnum(enum {
@@ -45,11 +47,11 @@ pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) c
             ShowItemProperties,
         }, method) orelse {
             log.warn("unsupported method: {s}", .{method});
-            return c.sd_bus_reply_method_return(message, null);
+            return;
         };
     };
 
-    log.info("handling message: {s}{}", .{ NAME, method });
+    log.info("handling message: {s}{}", .{ INTERFACE_NAME, method });
     if (method == .ShowItemProperties) {
         log.warn("unimplemented method: {s}", .{@tagName(method)});
     }
@@ -59,7 +61,7 @@ pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) c
     r = c.sd_bus_message_enter_container(message, 'a', "s");
     if (r < 0) {
         log.err("sd_bus_message_enter_container failed: {s}", .{c.strerror(-r)});
-        return r;
+        return error.Dbus;
     }
 
     var uris: std.ArrayList([]const u8) = .empty;
@@ -69,7 +71,7 @@ pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) c
         r = c.sd_bus_message_read(message, "s", &uri_str);
         if (r < 0) {
             log.err("sd_bus_message_read failed: {s}", .{c.strerror(-r)});
-            return r;
+            return error.Dbus;
         }
         if (r == 0) {
             break;
@@ -83,8 +85,9 @@ pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) c
             log.warn("uri scheme {s} in {s} is not of type file", .{ uri.scheme, uri_str });
             continue;
         }
-        uris.append(allocator, uri.path.percent_encoded) catch |err| {
-            log.warn("failed to enqueue uri {s}: {}", .{ uri.path.percent_encoded, err });
+        const path = uri.path.percent_encoded;
+        uris.append(allocator, path) catch |err| {
+            log.warn("failed to enqueue path {s}: {}", .{ path, err });
             continue;
         };
     }
@@ -92,33 +95,10 @@ pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) c
     r = c.sd_bus_message_exit_container(message);
     if (r < 0) {
         log.err("sd_bus_message_exit_container failed: {s}", .{c.strerror(-r)});
-        return r;
+        return error.Dbus;
     }
 
-    spawnFileManager(allocator, uris.items) catch |err| {
-        log.warn("failed to spawn process: {}", .{err});
+    spawner.spawnFileManager(allocator, uris.items) catch |err| {
+        log.err("failed to spawn process: {}", .{err});
     };
-
-    return c.sd_bus_reply_method_return(message, null);
-}
-
-fn spawnFileManager(allocator: std.mem.Allocator, args: []const []const u8) !void {
-    const argv = try std.mem.concat(
-        allocator,
-        []const u8,
-        &.{ &.{ "xdg-terminal-exec", "yazi" }, args },
-    );
-    defer allocator.free(argv);
-
-    var child = std.process.Child.init(argv, allocator);
-    child.stdout_behavior = .Ignore;
-    // Some terminals (like Ghostty) use stderr for their logging, and can get quite noisy
-    child.stderr_behavior = .Ignore;
-
-    if (std.mem.join(allocator, " ", argv)) |argv_str| {
-        defer allocator.free(argv_str);
-        log.info("spawning process: {s}", .{argv_str});
-    } else |_| {}
-
-    try child.spawn();
 }
