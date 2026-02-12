@@ -59,12 +59,6 @@
             buildInputs = with pkgs; [
               systemdLibs
             ];
-            shellHook = # sh
-              ''
-                # https://github.com/NixOS/nixpkgs/issues/270415
-                # https://github.com/NixOS/nixpkgs/pull/479423
-                unset ZIG_GLOBAL_CACHE_DIR
-              '';
           };
 
           treefmt.programs = {
