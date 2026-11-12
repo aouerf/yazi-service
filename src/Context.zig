@@ -1,4 +1,4 @@
 const std = @import("std");
 
-allocator: std.mem.Allocator,
+gpa: std.mem.Allocator,
 io: std.Io,

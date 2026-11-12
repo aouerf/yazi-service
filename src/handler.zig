@@ -64,10 +64,11 @@ pub fn handleMessage(context: *const Context, message: *c.sd_bus_message) !void 
         return error.Dbus;
     }
 
-    const allocator = context.allocator;
+    var arena: std.heap.ArenaAllocator = .init(context.gpa);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
     var uris: std.ArrayList([]const u8) = .empty;
-    defer uris.deinit(allocator);
     while (true) {
         var uri_str: [*c]const u8 = undefined;
         r = c.sd_bus_message_read(message, "s", &uri_str);

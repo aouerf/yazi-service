@@ -4,15 +4,15 @@ const Context = @import("Context.zig");
 const log = std.log.scoped(.spawner);
 
 pub fn spawnFileManager(context: *const Context, args: []const []const u8) !void {
-    const allocator = context.allocator;
+    const gpa = context.gpa;
     const io = context.io;
 
     const argv = try std.mem.concat(
-        allocator,
+        gpa,
         []const u8,
         &.{ &.{ "xdg-terminal-exec", "yazi" }, args },
     );
-    defer allocator.free(argv);
+    defer gpa.free(argv);
 
     var child = try std.process.spawn(io, .{
         .argv = argv,
@@ -22,8 +22,8 @@ pub fn spawnFileManager(context: *const Context, args: []const []const u8) !void
     });
     errdefer child.kill(io);
 
-    if (std.mem.join(allocator, " ", argv)) |argv_str| {
-        defer allocator.free(argv_str);
+    if (std.mem.join(gpa, " ", argv)) |argv_str| {
+        defer gpa.free(argv_str);
         log.debug("spawning process: {s}", .{argv_str});
     } else |_| {}
 

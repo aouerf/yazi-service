@@ -15,7 +15,7 @@ pub fn main(init: std.process.Init) !void {
     defer _ = c.sd_bus_unref(bus);
 
     const context: Context = .{
-        .allocator = init.arena.allocator(),
+        .gpa = init.gpa,
         .io = init.io,
     };
     try handler.init(&context, bus);
