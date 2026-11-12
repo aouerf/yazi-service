@@ -10,9 +10,7 @@ pub fn spawnFileManager(allocator: std.mem.Allocator, args: []const []const u8) 
     );
     defer allocator.free(argv);
 
-    // Heap-allocate the Child so the detached waiter thread has a stable pointer.
-    // (Previously `child` lived on the stack and became dangling after this
-    // function returned, causing `unreachable` panics in the waiter thread.)
+    // Heap-allocate the Child so the detached waiter thread has a stable pointer
     const child = try allocator.create(std.process.Child);
     errdefer allocator.destroy(child);
 
