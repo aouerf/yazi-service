@@ -2,7 +2,7 @@ const std = @import("std");
 
 const log = std.log.scoped(.spawner);
 
-pub fn spawnFileManager(allocator: std.mem.Allocator, args: []const []const u8) !void {
+pub fn spawnFileManager(io: std.Io, allocator: std.mem.Allocator, args: []const []const u8) !void {
     const argv = try std.mem.concat(
         allocator,
         []const u8,
@@ -14,30 +14,31 @@ pub fn spawnFileManager(allocator: std.mem.Allocator, args: []const []const u8) 
     const child = try allocator.create(std.process.Child);
     errdefer allocator.destroy(child);
 
-    child.* = std.process.Child.init(argv, allocator);
-    child.*.stdout_behavior = .Ignore;
-    // Some terminals (like Ghostty) use stderr for their logging, and can get quite noisy
-    child.*.stderr_behavior = .Ignore;
+    child.* = try std.process.spawn(io, .{
+        .argv = argv,
+        .stdout = .ignore,
+        // Some terminals (like Ghostty) use stderr for their logging, and can get quite noisy
+        .stderr = .ignore,
+    });
 
     if (std.mem.join(allocator, " ", argv)) |argv_str| {
         defer allocator.free(argv_str);
         log.debug("spawning process: {s}", .{argv_str});
     } else |_| {}
 
-    try child.spawn();
-    log.debug("process spawned (pid={})", .{child.id});
+    log.debug("process spawned (pid={})", .{child.id.?});
 
     // wait() needs to be called on a child after spawn() to clean up its resources on termination.
     // It shouldn't block the main program, so the waiting is done in a separate thread.
-    const thread = try std.Thread.spawn(.{}, waitForChild, .{child});
+    const thread = try std.Thread.spawn(.{}, waitForChild, .{ io, allocator, child });
     thread.detach();
 }
 
-fn waitForChild(child: *std.process.Child) void {
-    defer child.allocator.destroy(child);
+fn waitForChild(io: std.Io, allocator: std.mem.Allocator, child: *std.process.Child) void {
+    defer allocator.destroy(child);
 
-    const id = child.id;
-    const term = child.wait() catch |err| {
+    const id = child.id.?;
+    const term = child.wait(io) catch |err| {
         log.err("error waiting for process: {}", .{err});
         return;
     };

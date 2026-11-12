@@ -1,12 +1,9 @@
 const std = @import("std");
-
-const c = @import("c.zig").c;
+const c = @import("c");
+const Context = @import("Context.zig");
 const handler = @import("handler.zig");
 
-pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
+pub fn main(init: std.process.Init) !void {
     var r: c_int = undefined;
 
     var bus: ?*c.sd_bus = undefined;
@@ -17,8 +14,11 @@ pub fn main() !void {
     }
     defer _ = c.sd_bus_unref(bus);
 
-    const allocator = arena.allocator();
-    try handler.init(&allocator, bus);
+    const context: Context = .{
+        .allocator = init.arena.allocator(),
+        .io = init.io,
+    };
+    try handler.init(&context, bus);
     defer handler.deinit(bus);
 
     while (true) {
@@ -52,8 +52,8 @@ export fn handle_bus_message(
         return c.sd_bus_reply_method_return(m, null);
     }
 
-    const allocator = @as(*std.mem.Allocator, @ptrCast(@alignCast(userdata))).*;
-    handler.handleMessage(allocator, m) catch |err| {
+    const context: *const Context = @ptrCast(@alignCast(userdata));
+    handler.handleMessage(context, m) catch |err| {
         std.log.err("failed to handle message: {}", .{err});
     };
     return c.sd_bus_reply_method_return(m, null);

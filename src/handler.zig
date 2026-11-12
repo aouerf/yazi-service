@@ -1,6 +1,6 @@
 const std = @import("std");
-
-const c = @import("c.zig").c;
+const c = @import("c");
+const Context = @import("Context.zig");
 const spawner = @import("spawner.zig");
 
 const log = std.log.scoped(.handler);
@@ -13,14 +13,14 @@ const OBJECT_PATH = "/org/freedesktop/FileManager1";
 // So instead, the vtable is defined in C and exposed as a pointer.
 extern fn get_vtable() *c.sd_bus_vtable;
 
-pub fn init(allocator: *const std.mem.Allocator, bus: ?*c.sd_bus) !void {
+pub fn init(context: *const Context, bus: ?*c.sd_bus) !void {
     var r = c.sd_bus_add_object_vtable(
         bus,
         null,
         OBJECT_PATH,
         INTERFACE_NAME,
         get_vtable(),
-        @constCast(allocator),
+        @constCast(context),
     );
     if (r < 0) {
         log.err("sd_bus_add_object_vtable failed: {s}", .{c.strerror(-r)});
@@ -38,7 +38,7 @@ pub fn deinit(bus: ?*c.sd_bus) void {
     _ = c.sd_bus_release_name(bus, INTERFACE_NAME);
 }
 
-pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) !void {
+pub fn handleMessage(context: *const Context, message: *c.sd_bus_message) !void {
     const method = blk: {
         const method = std.mem.span(c.sd_bus_message_get_member(message));
         break :blk std.meta.stringToEnum(enum {
@@ -63,6 +63,8 @@ pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) !
         log.err("sd_bus_message_enter_container failed: {s}", .{c.strerror(-r)});
         return error.Dbus;
     }
+
+    const allocator = context.allocator;
 
     var uris: std.ArrayList([]const u8) = .empty;
     defer uris.deinit(allocator);
@@ -101,7 +103,7 @@ pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) !
         return error.Dbus;
     }
 
-    spawner.spawnFileManager(allocator, uris.items) catch |err| {
+    spawner.spawnFileManager(context.io, allocator, uris.items) catch |err| {
         log.err("failed to spawn process: {}", .{err});
     };
 }

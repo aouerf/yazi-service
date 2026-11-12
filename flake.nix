@@ -31,7 +31,7 @@
 
             strictDeps = true;
             nativeBuildInputs = with pkgs; [
-              zig_0_15
+              zig_0_17
               pkg-config
             ];
             buildInputs = with pkgs; [
@@ -53,8 +53,8 @@
               clang-tools
               nixd
               pkg-config
-              zig_0_15
-              zls_0_15
+              zig_0_17
+              zls_0_17
             ];
             buildInputs = with pkgs; [
               systemdLibs
