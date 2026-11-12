@@ -1,8 +1,12 @@
 const std = @import("std");
+const Context = @import("Context.zig");
 
 const log = std.log.scoped(.spawner);
 
-pub fn spawnFileManager(io: std.Io, allocator: std.mem.Allocator, args: []const []const u8) !void {
+pub fn spawnFileManager(context: *const Context, args: []const []const u8) !void {
+    const allocator = context.allocator;
+    const io = context.io;
+
     const argv = try std.mem.concat(
         allocator,
         []const u8,
@@ -10,16 +14,13 @@ pub fn spawnFileManager(io: std.Io, allocator: std.mem.Allocator, args: []const 
     );
     defer allocator.free(argv);
 
-    // Heap-allocate the Child so the detached waiter thread has a stable pointer
-    const child = try allocator.create(std.process.Child);
-    errdefer allocator.destroy(child);
-
-    child.* = try std.process.spawn(io, .{
+    var child = try std.process.spawn(io, .{
         .argv = argv,
         .stdout = .ignore,
         // Some terminals (like Ghostty) use stderr for their logging, and can get quite noisy
         .stderr = .ignore,
     });
+    errdefer child.kill(io);
 
     if (std.mem.join(allocator, " ", argv)) |argv_str| {
         defer allocator.free(argv_str);
@@ -30,12 +31,16 @@ pub fn spawnFileManager(io: std.Io, allocator: std.mem.Allocator, args: []const 
 
     // wait() needs to be called on a child after spawn() to clean up its resources on termination.
     // It shouldn't block the main program, so the waiting is done in a separate thread.
-    const thread = try std.Thread.spawn(.{}, waitForChild, .{ io, allocator, child });
+    const thread = try std.Thread.spawn(.{}, waitForChild, .{child});
     thread.detach();
 }
 
-fn waitForChild(io: std.Io, allocator: std.mem.Allocator, child: *std.process.Child) void {
-    defer allocator.destroy(child);
+fn waitForChild(spawned_child: std.process.Child) void {
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    defer threaded.deinit();
+
+    const io = threaded.io();
+    var child = spawned_child;
 
     const id = child.id.?;
     const term = child.wait(io) catch |err| {

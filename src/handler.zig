@@ -103,7 +103,7 @@ pub fn handleMessage(context: *const Context, message: *c.sd_bus_message) !void 
         return error.Dbus;
     }
 
-    spawner.spawnFileManager(context.io, allocator, uris.items) catch |err| {
+    spawner.spawnFileManager(context, uris.items) catch |err| {
         log.err("failed to spawn process: {}", .{err});
     };
 }
