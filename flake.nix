@@ -22,21 +22,33 @@
       ];
       perSystem =
         { pkgs, ... }:
+        let
+          zig = pkgs.zig_0_17;
+        in
         {
-          packages.default = pkgs.stdenv.mkDerivation {
+          packages.default = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "yazi-service";
             version = "0.1.0";
 
             src = ./.;
 
             strictDeps = true;
-            nativeBuildInputs = with pkgs; [
-              zig_0_17
-              pkg-config
+            nativeBuildInputs = [
+              pkgs.pkg-config
+              zig
             ];
-            buildInputs = with pkgs; [
-              systemdLibs
+            buildInputs = [
+              pkgs.systemdLibs
             ];
+
+            zigDeps = zig.fetchDeps {
+              inherit (finalAttrs) pname version src;
+              hash = "sha256-aiE65pHswSG8K5MYtoNiSv0vwWB3A+q7tt2giqurCCg=";
+            };
+
+            postConfigure = ''
+              ln -s ${finalAttrs.zigDeps} $ZIG_GLOBAL_CACHE_DIR/p
+            '';
 
             meta = with pkgs.lib; {
               description = "An implementation of the File Manager DBus interface for Yazi";
@@ -45,16 +57,16 @@
               platforms = platforms.linux;
               mainProgram = "yazi-service";
             };
-          };
+          });
 
           devShells.default = pkgs.mkShell {
             strictDeps = true;
-            packages = with pkgs; [
-              clang-tools
-              nixd
-              pkg-config
-              zig_0_17
-              zls_0_17
+            packages = [
+              pkgs.clang-tools
+              pkgs.nixd
+              pkgs.pkg-config
+              pkgs.zls
+              zig
             ];
             buildInputs = with pkgs; [
               systemdLibs
@@ -65,7 +77,10 @@
             clang-tidy.enable = true;
             mdformat.enable = true;
             nixfmt.enable = true;
-            zig.enable = true;
+            zig = {
+              enable = true;
+              package = zig;
+            };
           };
         };
     };
