@@ -85,7 +85,10 @@ pub fn handleMessage(allocator: std.mem.Allocator, message: *c.sd_bus_message) !
             log.warn("uri scheme {s} in {s} is not of type file", .{ uri.scheme, uri_str });
             continue;
         }
-        const path = uri.path.percent_encoded;
+        const path = uri.path.toRawMaybeAlloc(allocator) catch |err| {
+            log.warn("failed to decode path {s}: {}", .{ uri.path.percent_encoded, err });
+            continue;
+        };
         uris.append(allocator, path) catch |err| {
             log.warn("failed to enqueue path {s}: {}", .{ path, err });
             continue;
