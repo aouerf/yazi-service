@@ -57,6 +57,7 @@ fn installServiceFiles(b: *std.Build, filename: []const u8) void {
             \\[Service]
             \\Type=dbus
             \\BusName=org.freedesktop.FileManager1
+            \\KillMode=process
             \\ExecStart=%s
         , .{}),
     );
