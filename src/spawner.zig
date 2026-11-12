@@ -8,11 +8,14 @@ pub fn spawnFileManager(allocator: std.mem.Allocator, args: []const []const u8) 
         []const u8,
         &.{ &.{ "xdg-terminal-exec", "yazi" }, args },
     );
+    defer allocator.free(argv);
 
     // Heap-allocate the Child so the detached waiter thread has a stable pointer.
     // (Previously `child` lived on the stack and became dangling after this
     // function returned, causing `unreachable` panics in the waiter thread.)
     const child = try allocator.create(std.process.Child);
+    errdefer allocator.destroy(child);
+
     child.* = std.process.Child.init(argv, allocator);
     child.*.stdout_behavior = .Ignore;
     // Some terminals (like Ghostty) use stderr for their logging, and can get quite noisy
@@ -33,6 +36,8 @@ pub fn spawnFileManager(allocator: std.mem.Allocator, args: []const []const u8) 
 }
 
 fn waitForChild(child: *std.process.Child) void {
+    defer child.allocator.destroy(child);
+
     const id = child.id;
     const term = child.wait() catch |err| {
         log.err("error waiting for process: {}", .{err});
